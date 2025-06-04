@@ -1,46 +1,103 @@
-require('dotenv').config();
-const axios = require('axios');
+require("dotenv").config();
+const axios = require("axios");
 
 const HUBSPOT_TOKEN = process.env.HUBSPOT_TOKEN;
-const headers = { Authorization: `Bearer ${HUBSPOT_TOKEN}` };
 
-async function getLineItemIds(dealId) {
+async function getLineItemsForDeal(dealId) {
   const url = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/line_items`;
-  const res = await axios.get(url, { headers });
-  return res.data.results.map(item => item.id);
+  const res = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${HUBSPOT_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  return res.data.results;
 }
 
-async function getLineItemDetails(itemId) {
-  const url = `https://api.hubapi.com/crm/v3/objects/line_items/${itemId}?properties=price,quantity,hs_discount,createdate`;
-  const res = await axios.get(url, { headers });
-  return res.data;
+async function getLineItemDetails(lineItemId) {
+  const url = `https://api.hubapi.com/crm/v3/objects/line_items/${lineItemId}`;
+  const res = await axios.get(url, {
+    headers: {
+      Authorization: `Bearer ${HUBSPOT_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    params: {
+      properties: ["price", "quantity", "hs_discount", "createdate"].join(","),
+    },
+  });
+
+  return res.data.properties;
 }
 
-function calculateTotal(lineItems) {
-  const sorted = lineItems.sort((a, b) => new Date(a.properties.createdate) - new Date(b.properties.createdate));
-  const filtered = sorted.slice(1);
-  let total = 0;
-  for (const item of filtered) {
-    const { price = 0, quantity = 1, hs_discount = 0 } = item.properties;
-    const q = parseFloat(quantity) || 1;
-    const p = parseFloat(price) || 0;
-    const d = parseFloat(hs_discount) || 0;
-    total += q * p * (1 - d / 100);
-  }
-  return Math.round(total * 100) / 100;
-}
-
-async function updateDeal(dealId, value) {
+async function updateDealTotal(dealId, total) {
   const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}`;
-  await axios.patch(url, {
-    properties: { custom_total_lineitems: value }
-  }, { headers });
-  console.log(`✅ Deal aggiornato con valore: €${value}`);
+  await axios.patch(
+    url,
+    {
+      properties: {
+        custom_total_lineitems: total,
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${HUBSPOT_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
 }
 
-module.exports = async function calculateAndUpdateDeal(dealId) {
-  const ids = await getLineItemIds(dealId);
-  const details = await Promise.all(ids.map(getLineItemDetails));
-  const total = calculateTotal(details);
-  await updateDeal(dealId, total);
+async function calculateAndUpdateDeal(dealId) {
+  try {
+    console.log(`📥 Calcolo per Deal ID: ${dealId}`);
+
+    const associatedLineItems = await getLineItemsForDeal(dealId);
+
+    if (!associatedLineItems.length) {
+      console.warn("❗ Nessun line item associato al Deal.");
+      return;
+    }
+
+    console.log("📦 Line items ricevuti:", associatedLineItems);
+
+    // Ordina per data di creazione e rimuove il primo
+    const sortedLineItems = [];
+
+    for (const item of associatedLineItems) {
+      const id = item.id || item.toObjectId || item.objectId;
+
+      if (!id) {
+        console.warn("⚠️ Line item senza ID valido:", item);
+        continue;
+      }
+
+      const details = await getLineItemDetails(id);
+      sortedLineItems.push({ id, ...details });
+    }
+
+    sortedLineItems.sort(
+      (a, b) => new Date(a.createdate) - new Date(b.createdate)
+    );
+
+    const lineItemsToSum = sortedLineItems.slice(1);
+
+    let total = 0;
+    for (const item of lineItemsToSum) {
+      const price = parseFloat(item.price || 0);
+      const quantity = parseFloat(item.quantity || 1);
+      const discount = parseFloat(item.hs_discount || 0);
+
+      total += (price * quantity) * (1 - discount / 100);
+    }
+
+    console.log(`💰 Totale calcolato: ${total}`);
+
+    await updateDealTotal(dealId, total);
+    console.log("✅ Proprietà aggiornata con successo.");
+  } catch (error) {
+    console.error("❌ Errore durante l’elaborazione:", error);
+  }
 }
+
+module.exports = { calculateAndUpdateDeal };
