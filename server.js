@@ -1,7 +1,7 @@
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const calculateAndUpdateDeal = require('./index');
+const express = require("express");
+const bodyParser = require("body-parser");
+const { calculateAndUpdateDeal } = require("./index"); // ✅ IMPORT CORRETTO
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
