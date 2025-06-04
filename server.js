@@ -6,7 +6,7 @@ const calculateAndUpdateDeal = require('./index');
 const app = express();
 app.use(bodyParser.json());
 
-app.post('/webhook/deal-updated', async (req, res) => {
+app.post('/webhook/total-of-optionals', async (req, res) => {
   const dealId = req.body.objectId || req.body.dealId;
   if (!dealId) return res.status(400).send("Missing deal ID");
 
