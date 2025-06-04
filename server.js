@@ -12,27 +12,21 @@ app.post('/webhook/total-of-optionals', async (req, res) => {
   console.log("📬 Webhook ricevuto:");
   console.log(JSON.stringify(req.body, null, 2));
 
-  if (!Array.isArray(req.body)) {
-    console.log("❌ Payload non è un array");
-    return res.status(400).send("Invalid payload format");
+  const dealId = req.body.objectId; // corretto per webhook da app privata
+
+  if (!dealId) {
+    console.log("❌ Errore: 'objectId' mancante nel payload");
+    return res.status(400).send("Missing deal ID");
   }
 
+  console.log("👉 Deal ID ricevuto:", dealId);
+
   try {
-    for (const event of req.body) {
-      const dealId = event.objectId;
-      if (!dealId) {
-        console.log("❌ Evento senza objectId:", JSON.stringify(event));
-        continue;
-      }
-
-      console.log("👉 Deal ID ricevuto:", dealId);
-      await calculateAndUpdateDeal(dealId);
-      console.log("✅ Ricalcolo completato per Deal", dealId);
-    }
-
+    await calculateAndUpdateDeal(dealId);
+    console.log("✅ Ricalcolo completato con successo");
     res.status(200).send("OK");
   } catch (err) {
-    console.error("❌ Errore durante l’elaborazione:", err);
+    console.error("❌ Errore nel calcolo:", err);
     res.status(500).send("Internal Server Error");
   }
 });
